@@ -133,6 +133,88 @@ function Assert-PinnedSubmodules {
     return $status
 }
 
+function Get-CMakeCompilerArguments {
+    # CMake's compiler-identification flags parse backslashes as escapes when
+    # a Windows path is used for nvcc -ccbin. Forward slashes and FILEPATH
+    # cache types retain the exact path, including spaces, for all compilers.
+    $msvcCMakePath = $script:BuildEnvironment.msvc_compiler.Replace('\', '/')
+    $nvccCMakePath = (Join-Path $script:CudaPath 'bin\nvcc.exe').Replace('\', '/')
+    return @(
+        "-DCMAKE_C_COMPILER:FILEPATH=$msvcCMakePath",
+        "-DCMAKE_CXX_COMPILER:FILEPATH=$msvcCMakePath",
+        "-DCMAKE_CUDA_COMPILER:FILEPATH=$nvccCMakePath",
+        "-DCMAKE_CUDA_HOST_COMPILER:FILEPATH=$msvcCMakePath"
+    )
+}
+
+function Invoke-CompilerProbe {
+    # Configure and link a tiny C/C++23/CUDA20 project before fetching source
+    # or installing vcpkg packages. This invokes no GPU and no package manager.
+    $probeSource = Join-Path $Workspace 'compiler-probe'
+    $probeBuild = Join-Path $probeSource 'build'
+    New-Item -ItemType Directory -Force -Path $probeSource | Out-Null
+    @'
+cmake_minimum_required(VERSION 3.30)
+project(LichtFeldCompilerProbe LANGUAGES C CXX CUDA)
+if(NOT CMAKE_C_COMPILER_ID STREQUAL "MSVC" OR NOT CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    message(FATAL_ERROR "The application requires MSVC for C and C++")
+endif()
+if(NOT CMAKE_CUDA_COMPILER_ID STREQUAL "NVIDIA")
+    message(FATAL_ERROR "The application requires NVIDIA nvcc")
+endif()
+add_executable(lichtfeld_compiler_probe probe.c probe.cpp probe.cu)
+set_target_properties(lichtfeld_compiler_probe PROPERTIES
+    CXX_STANDARD 23 CXX_STANDARD_REQUIRED ON
+    CUDA_STANDARD 20 CUDA_STANDARD_REQUIRED ON
+    CUDA_ARCHITECTURES 75 CUDA_RUNTIME_LIBRARY Shared)
+'@ | Set-Content -LiteralPath (Join-Path $probeSource 'CMakeLists.txt') -Encoding utf8NoBOM
+    'int lichtfeld_probe_c(void) { return 42; }' |
+        Set-Content -LiteralPath (Join-Path $probeSource 'probe.c') -Encoding utf8NoBOM
+    @'
+#include <expected>
+extern "C" int lichtfeld_probe_c(void);
+int main() {
+    std::expected<int, int> value = lichtfeld_probe_c();
+    return value.value() == 42 ? 0 : 1;
+}
+'@ | Set-Content -LiteralPath (Join-Path $probeSource 'probe.cpp') -Encoding utf8NoBOM
+    '__global__ void lichtfeld_probe_kernel(int* value) { *value = 42; }' |
+        Set-Content -LiteralPath (Join-Path $probeSource 'probe.cu') -Encoding utf8NoBOM
+    $probeResult = 'failed'
+    try {
+        $probeArguments = @(
+            '--fresh', '-S', $probeSource, '-B', $probeBuild, '-G', 'Ninja',
+            '-DCMAKE_BUILD_TYPE:STRING=Release',
+            '-DCMAKE_TOOLCHAIN_FILE:FILEPATH=',
+            '-DCMAKE_CUDA_ARCHITECTURES:STRING=75',
+            '-DCMAKE_CXX_STANDARD:STRING=23', '-DCMAKE_CUDA_STANDARD:STRING=20',
+            '-DCMAKE_CUDA_RUNTIME_LIBRARY:STRING=Shared'
+        ) + @(Get-CMakeCompilerArguments)
+        Invoke-CheckedNative cmake $probeArguments
+        Invoke-CheckedNative cmake @('--build', $probeBuild, '--config', 'Release', '--parallel', '1')
+        $probeResult = 'passed'
+        Write-Host 'Compiler probe passed: C, C++23 and CUDA20 compiled and linked; no GPU execution.'
+    } finally {
+        foreach ($probeLog in @(
+            @{ Source = (Join-Path $probeBuild 'CMakeCache.txt'); Name = 'compiler-probe-CMakeCache.txt' },
+            @{ Source = (Join-Path $probeBuild 'CMakeFiles\CMakeConfigureLog.yaml'); Name = 'compiler-probe-CMakeConfigureLog.yaml' }
+        )) {
+            if (Test-Path -LiteralPath $probeLog.Source -PathType Leaf) {
+                Copy-Item -LiteralPath $probeLog.Source -Destination (Join-Path $LogDir $probeLog.Name) -Force
+            }
+        }
+        [ordered]@{
+            result = $probeResult
+            source_directory = $probeSource
+            build_directory = $probeBuild
+            compiler_arguments = @(Get-CMakeCompilerArguments)
+            gpu_execution = 'not performed'
+            checked_at_utc = [DateTimeOffset]::UtcNow.ToString('o')
+        } | ConvertTo-Json -Depth 4 |
+            Set-Content -LiteralPath (Join-Path $LogDir 'compiler-probe.json') -Encoding utf8NoBOM
+    }
+}
+
 function Initialize-BuildEnvironment {
     if (-not $IsWindows -or -not [Environment]::Is64BitProcess) {
         throw 'Run this script with 64-bit PowerShell 7 on Windows.'
@@ -254,6 +336,7 @@ try {
     }
     Initialize-BuildEnvironment
     if ($Stage -in @('Configure', 'All')) {
+        Invoke-CompilerProbe
         Initialize-PinnedCheckout $SourceDir $UpstreamRepository $UpstreamCommit
         Invoke-CheckedNative git @('-C', $SourceDir, 'submodule', 'sync', '--recursive')
         Invoke-CheckedNative git @('-C', $SourceDir, 'submodule', 'update', '--init', '--recursive')
@@ -274,7 +357,7 @@ try {
         }
         Push-Location $SourceDir
         try {
-            Invoke-CheckedNative cmake @(
+            $configureArguments = @(
                 '--preset', 'windows-release', '-B', $BuildDir,
                 '-DBUILD_PORTABLE=ON', '-DBUILD_PYTHON_STUBS=OFF',
                 '-DBUILD_CUDA_MIN_SM=75', '-DBUILD_TESTS=OFF',
@@ -283,12 +366,9 @@ try {
                 '-DLFS_DEV_IMPORT_SOURCE_PYTHON=OFF', '-DLFS_DEV_IMPORT_SOURCE_RESOURCES=OFF',
                 '-DLFS_ENABLE_CUDA_DEVICE_DEBUG=OFF', '-DLFS_ENABLE_VULKAN_VALIDATION=OFF',
                 "-DLFS_VCPKG_MAX_CONCURRENCY=$VcpkgJobs",
-                "-DCMAKE_CUDA_COMPILER=$(Join-Path $CudaPath 'bin\nvcc.exe')",
-                "-DCMAKE_C_COMPILER=$($script:BuildEnvironment.msvc_compiler)",
-                "-DCMAKE_CXX_COMPILER=$($script:BuildEnvironment.msvc_compiler)",
-                "-DCMAKE_CUDA_HOST_COMPILER=$($script:BuildEnvironment.msvc_compiler)",
                 "-DLFS_DOWNLOAD_CACHE_DIR=$(Join-Path $Workspace 'downloads\upstream')"
-            )
+            ) + @(Get-CMakeCompilerArguments)
+            Invoke-CheckedNative cmake $configureArguments
         } finally { Pop-Location }
         $submoduleStatus | Set-Content -LiteralPath (Join-Path $LogDir 'upstream-submodules.txt') -Encoding utf8NoBOM
     }
