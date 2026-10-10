@@ -1,0 +1,13 @@
+{
+  "repository": "https://github.com/MrNeRF/LichtFeld-Studio.git",
+  "tag": "v0.5.4",
+  "commit": "09d338189162b52d888fdbe2c88025e31d0dea05",
+  "vcpkgRepository": "https://github.com/microsoft/vcpkg.git",
+  "vcpkgCommit": "e456309491fd875487bf02b8a0dca76c1b1b00cc",
+  "vcpkgBuiltinBaseline": "c3867e714dd3a51c272826eea77267876517ed99",
+  "cudaVersion": "12.8.0",
+  "cudaInstaller": "https://developer.download.nvidia.com/compute/cuda/12.8.0/local_installers/cuda_12.8.0_571.96_windows.exe",
+  "minimumDriverPolicyWindows": "571.96",
+  "minimumComputeCapability": "7.5",
+  "uvVersion": "0.10.2"
+}

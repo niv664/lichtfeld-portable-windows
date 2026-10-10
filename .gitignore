@@ -1,0 +1,7 @@
+/work/
+/artifacts/
+/logs/
+*.zip
+*.tar.gz
+*.sha256
+__pycache__/

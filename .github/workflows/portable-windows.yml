@@ -1,0 +1,149 @@
+name: Portable Windows x64
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish the tested package and corresponding source as a GitHub Release
+        type: boolean
+        default: true
+      jobs:
+        description: Parallel compiler jobs (2 is conservative for a hosted runner)
+        type: choice
+        default: '2'
+        options: ['2', '3', '4']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portable-windows-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  LF_WORKSPACE: C:\lfp
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 350
+    steps:
+      - name: Checkout packaging configuration
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Validate packaging scripts
+        shell: pwsh
+        run: ./scripts/Test-PackagingSources.ps1
+
+      - name: Inspect hosted build tools
+        shell: pwsh
+        run: |
+          cmake --version
+          ninja --version
+          & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 Microsoft.VisualStudio.Component.VC.Llvm.Clang -property installationPath
+          Get-PSDrive -PSProvider FileSystem | Select-Object Name,Used,Free
+
+      - name: Install official signed CUDA 12.8.0 toolkit (without driver)
+        shell: pwsh
+        run: ./scripts/Install-CudaBuildTools.ps1
+
+      - name: Cache release dependency binaries
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            C:\lfp\binary-cache
+            C:\lfp\downloads\vcpkg
+            C:\lfp\downloads\upstream
+          key: windows-2022-cuda12.8-v054-release-${{ hashFiles('upstream.lock.json', 'patches/**') }}
+
+      - name: Configure pinned source and release dependencies
+        shell: pwsh
+        env:
+          VCPKG_BINARY_SOURCES: clear;files,C:\lfp\binary-cache,readwrite
+        run: ./scripts/Build-Portable.ps1 -Stage Configure -Workspace $env:LF_WORKSPACE -Jobs ${{ inputs.jobs }} -VcpkgJobs 2
+
+      - name: Compile application (no GPU required)
+        shell: pwsh
+        run: ./scripts/Build-Portable.ps1 -Stage Build -Workspace $env:LF_WORKSPACE -Jobs ${{ inputs.jobs }}
+
+      - name: Install portable runtime
+        shell: pwsh
+        run: ./scripts/Build-Portable.ps1 -Stage Install -Workspace $env:LF_WORKSPACE
+
+      - name: Package, relocate and test without developer tools
+        shell: pwsh
+        run: |
+          # Keep redistributable discovery in the same x64 VS environment.
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          & (Join-Path $vs 'Common7\Tools\Launch-VsDevShell.ps1') -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
+          ./scripts/New-PortablePackage.ps1 -Workspace $env:LF_WORKSPACE
+
+      - name: Upload portable ZIP and matching source
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: LichtFeld-Studio-v0.5.4-portable-windows-x64
+          path: C:\lfp\artifacts\*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: windows-build-diagnostics-${{ github.run_number }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            C:\lfp\logs\*
+            C:\lfp\b\CMakeCache.txt
+            C:\lfp\b\CMakeFiles\CMakeConfigureLog.yaml
+            C:\lfp\b\vcpkg-manifest-install.log
+            C:\lfp\vcpkg\buildtrees\**\*.log
+
+      - name: Report validation scope
+        if: always()
+        shell: pwsh
+        run: |
+          @'
+          Build target: upstream v0.5.4 / 09d338189162b52d888fdbe2c88025e31d0dea05.
+          Packaging tests: required files, checksums, static PE imports, relocated embedded Python and uv with Windows-only PATH.
+          App --help is skipped if NVIDIA driver nvcuda.dll is absent; no synthetic driver is provided.
+          Training, rendering, editing, exports and GPU memory limits require real NVIDIA hardware.
+          '@ | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+  publish:
+    needs: build
+    if: inputs.publish_release
+    runs-on: windows-2022
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Fetch tested package artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: gh run download ${{ github.run_id }} --repo ${{ github.repository }} --name LichtFeld-Studio-v0.5.4-portable-windows-x64 --dir release
+
+      - name: Publish binary, checksums, test report and corresponding sources
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $tag = 'v0.5.4-portable.' + '${{ github.run_number }}'
+          @'
+          Portable Windows x64 build of official LichtFeld Studio v0.5.4.
+
+          Download the portable ZIP and its .sha256 file. Unzip into a normal user folder and open bin/LichtFeld-Studio.exe or Start-LichtFeld.cmd. Read README-NL.md first.
+
+          Requires Windows x64, an NVIDIA GPU with compute capability >=7.5, and driver >=571.96. No development tools or full CUDA Toolkit are required on the target.
+
+          GitHub Actions has no NVIDIA GPU: training/rendering/export are not functionally validated by this release. See package-tests.json for actual non-GPU results and GPU-TESTPROTOCOL.md for target validation.
+
+          The matching corresponding-source archive, build scripts, GPLv3 and dependency notices accompany this package. This is an unsigned community source build, not an official upstream binary release.
+          '@ | Set-Content release-notes.txt -Encoding utf8
+          $assets = (Get-ChildItem release -File).FullName
+          gh release create $tag @assets --repo '${{ github.repository }}' --target '${{ github.sha }}' --title "LichtFeld Studio 0.5.4 portable Windows x64 (build ${{ github.run_number }})" --notes-file release-notes.txt
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub Release publiceren mislukt.' }

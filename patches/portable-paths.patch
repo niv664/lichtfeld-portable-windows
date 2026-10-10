@@ -1,0 +1,48 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 7c8c0625..27b98478 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1415,7 +1415,7 @@ if(BUILD_PORTABLE)
+     # nvcuda.dll is provided by the NVIDIA GPU driver, not the CUDA Toolkit
+     set(_PRE_EXCLUDE [[api-ms-.*]] [[ext-ms-.*]] [[API-MS-.*]] [[EXT-MS-.*]] [[nvcuda[.]dll]] [[libcuda[.]so.*]])
+     set(_POST_EXCLUDE
+-            [[.*[Ss]ystem32.*]] [[.*[Ww]indows.*]]
++            [[.*[Ss]ystem32.*]]
+             [[/lib/x86_64-linux-gnu/.*]] [[/lib64/ld-linux.*]] [[/usr/lib.*]]
+             [[.*ld-linux.*]] [[.*libc[.]so[.].*]] [[.*libpthread.*]]
+             [[.*libdl[.]so.*]] [[.*libm[.]so[.].*]] [[.*librt[.]so.*]]
+diff --git a/src/python/CMakeLists.txt b/src/python/CMakeLists.txt
+index cbd9a2db..c7d64d01 100644
+--- a/src/python/CMakeLists.txt
++++ b/src/python/CMakeLists.txt
+@@ -141,9 +141,12 @@ target_link_libraries(lfs_python_utils
+         lfs::tree_sitter_python
+ )
+ 
+-set(LFS_PYTHON_UTILS_DEFINITIONS
+-    LFS_PYTHON_EXECUTABLE="${Python_EXECUTABLE}"
+-)
++set(LFS_PYTHON_UTILS_DEFINITIONS)
++if(NOT BUILD_PORTABLE)
++    list(APPEND LFS_PYTHON_UTILS_DEFINITIONS
++        LFS_PYTHON_EXECUTABLE="${Python_EXECUTABLE}"
++    )
++endif()
+ if(LFS_DEV_IMPORT_SOURCE_PYTHON AND NOT BUILD_PORTABLE)
+     list(APPEND LFS_PYTHON_UTILS_DEFINITIONS
+         LFS_DEV_PYTHON_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+@@ -234,9 +237,11 @@ set_target_properties(lfs_py PROPERTIES
+ # Do not add --exclude-libs,ALL here while lfs_visualizer is static on Linux.
+ # The embedded app and the lichtfeld extension currently share GUI registries
+ # and hook bridges through ELF symbol interposition.
+-target_compile_definitions(lfs_py PRIVATE
+-    LFS_PYTHON_EXECUTABLE="${Python_EXECUTABLE}"
+-)
++if(NOT BUILD_PORTABLE)
++    target_compile_definitions(lfs_py PRIVATE
++        LFS_PYTHON_EXECUTABLE="${Python_EXECUTABLE}"
++    )
++endif()
+ 
+ 
+ if(CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED)
