@@ -181,7 +181,8 @@ function Initialize-BuildEnvironment {
     if (-not (Test-Path -LiteralPath $clang)) {
         throw 'Install the VS individual component C++ Clang Compiler for Windows (Microsoft.VisualStudio.Component.VC.Llvm.Clang).'
     }
-    $env:PATH = (Split-Path -Parent $clang) + [IO.Path]::PathSeparator + $env:PATH
+    # Keep MSVC first. The libplacebo port discovers clang-cl via VSINSTALLDIR;
+    # prepending LLVM also exposes clang++ and changes CMake's default compiler.
     if ([string]::IsNullOrWhiteSpace($script:CudaPath)) {
         $script:CudaPath = Join-Path $env:ProgramFiles 'NVIDIA GPU Computing Toolkit\CUDA\v12.8'
     }
@@ -283,6 +284,9 @@ try {
                 '-DLFS_ENABLE_CUDA_DEVICE_DEBUG=OFF', '-DLFS_ENABLE_VULKAN_VALIDATION=OFF',
                 "-DLFS_VCPKG_MAX_CONCURRENCY=$VcpkgJobs",
                 "-DCMAKE_CUDA_COMPILER=$(Join-Path $CudaPath 'bin\nvcc.exe')",
+                "-DCMAKE_C_COMPILER=$($script:BuildEnvironment.msvc_compiler)",
+                "-DCMAKE_CXX_COMPILER=$($script:BuildEnvironment.msvc_compiler)",
+                "-DCMAKE_CUDA_HOST_COMPILER=$($script:BuildEnvironment.msvc_compiler)",
                 "-DLFS_DOWNLOAD_CACHE_DIR=$(Join-Path $Workspace 'downloads\upstream')"
             )
         } finally { Pop-Location }

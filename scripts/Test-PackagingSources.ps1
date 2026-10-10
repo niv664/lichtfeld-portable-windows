@@ -18,7 +18,7 @@ foreach ($name in @('README.md','LICENSE','docs/INSTALLATIE-NL.md','docs/LICENTI
 }
 $workflow=Get-Content (Join-Path $repo '.github\workflows\portable-windows.yml') -Raw
 foreach ($match in [regex]::Matches($workflow,'(?m)^\s+uses:\s+([^\s#]+)')) {
-    if ($match.Groups[1].Value -notmatch '^actions/[a-z-]+@[a-f0-9]{40}$') { throw 'Action must use an exact official commit.' }
+    if ($match.Groups[1].Value -notmatch '^actions/[a-z-]+(?:/(?:restore|save))?@[a-f0-9]{40}$') { throw 'Action must use an exact official commit.' }
 }
 if ($workflow -notmatch 'runs-on: windows-2022') { throw 'Expected pinned Windows runner image family.' }
 Write-Host 'Packaging pin, required sources and Actions commit checks PASS.'

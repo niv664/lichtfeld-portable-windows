@@ -85,7 +85,7 @@ function Copy-SourceTree([string]$From,[string]$To) {
     # Robocopy uses native literal paths. Return codes 0..7 indicate success.
     # Rooted exclusions preserve legitimate nested source directories such as tools/build.
     $excludedRoots=@('artifacts','work','logs','buildtrees','packages','downloads') | ForEach-Object {Join-Path $From $_}
-    & robocopy $From $To /E /XD .git __pycache__ @excludedRoots /XF .git '*.obj' '*.o' '*.pdb' '*.pyc' /NFL /NDL /NJH /NJS /NP | Out-Null
+    & robocopy $From $To /E /XJ /XD .git __pycache__ @excludedRoots /XF .git '*.obj' '*.o' '*.pdb' '*.pyc' /NFL /NDL /NJH /NJS /NP | Out-Null
     if ($LASTEXITCODE -ge 8) { throw "Kopieren bronboom mislukt: $From ($LASTEXITCODE)" }
 }
 Copy-SourceTree $source (Join-Path $sourceBundle 'upstream')
@@ -99,10 +99,9 @@ if ($LASTEXITCODE -ne 0) { throw 'De gebruikte vcpkg-baseline kon niet worden ge
 $archiveDir=Join-Path $sourceBundle 'source-archives'
 New-Item -ItemType Directory -Path $archiveDir -Force | Out-Null
 foreach ($file in Get-ChildItem (Join-Path $Workspace 'downloads\vcpkg') -File | Where-Object {$_.Name -match '\.(zip|tar|gz|bz2|xz|tgz|7z)$'}) { Copy-Item $file.FullName $archiveDir }
-foreach ($port in Get-ChildItem (Join-Path $Workspace 'vcpkg\buildtrees') -Directory) {
-    $portSource=Join-Path $port.FullName 'src'
-    if (Test-Path $portSource) { Copy-SourceTree $portSource (Join-Path $sourceBundle ('patched-port-sources\'+$port.Name)) }
-}
+# Original dependency archives plus the exact versioned recipes/patches above
+# preserve authoritative sources, including Unix symlinks. Do not recursively
+# mirror Windows extracted port trees: OpenEXR contains an untraversable link.
 foreach ($dep in Get-ChildItem (Join-Path $build '_deps') -Directory | Where-Object {$_.Name -like '*-src'}) { Copy-SourceTree $dep.FullName (Join-Path $sourceBundle ('fetchcontent\'+$dep.Name)) }
 Copy-Item (Join-Path $build 'vcpkg_installed\vcpkg\status') (Join-Path $sourceBundle 'vcpkg-installed-status.txt')
 & git -C $source diff --binary | Set-Content (Join-Path $sourceBundle 'applied-upstream.patch') -Encoding utf8

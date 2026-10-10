@@ -22,7 +22,7 @@ Publiceer bij iedere binaryversie een passend bronpakket met:
 
 1. De exacte upstream checkout, inclusief de inhoud en commit van `external/libvterm` en eventuele overige submodules. Een automatisch GitHub source-archief bevat die submodule-inhoud niet.
 2. Deze packagingrepository, buildconfiguratie, lockgegevens, patches, PowerShell-scripts en de buildmanifesten.
-3. De gebruikte vcpkg-portfiles en overlays, originele dependencydownloads en de uitgepakte bronbomen waarop eventuele patches zijn toegepast.
+3. De gebruikte historische vcpkg-portfiles en overlays, originele dependencybronarchieven en alle toegepaste patches met hun buildscripts. Daarmee kunnen ook Windows-onbruikbare Unix-symlinks uit het originele bronarchief opnieuw worden hersteld.
 4. De relevante externe bronbomen en alle licentiebestanden, inclusief de gebruikte FFmpeg- en x264-bronversies.
 
 Archiveer daarvoor de relevante `vcpkg/downloads`, `vcpkg/buildtrees` en externe bronbomen tijdens de build. Gebruik de buildlogs en pakketmetadata om de inventaris te controleren. Een downloadcache of volledige buildtree is een hulpmiddel voor die controle; controleer dat het uiteindelijke bronpakket de benodigde bronbestanden en patches daadwerkelijk bevat. De algemene verwijzing naar de actuele upstream hoofdtak vervangt de broncode van de uitgebrachte binary niet.
