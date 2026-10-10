@@ -8,7 +8,7 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path -LiteralPath $PackageRoot).Path
 $required = @('bin/LichtFeld-Studio.exe','bin/python.exe','bin/python312.dll','bin/python312._pth',
     'bin/uv.exe','bin/pythonw.exe','bin/venvlauncher.exe','bin/venvwlauncher.exe',
-    'bin/lfs_core.dll','bin/lfs_python_runtime.dll','bin/lfs_visualizer.dll',
+    'bin/vulkan-1.dll','bin/lfs_core.dll','bin/lfs_python_runtime.dll','bin/lfs_visualizer.dll',
     'bin/lfs_mcp.dll','bin/_lfs_panel_contract.py','bin/lfs_splat_lod_hierarchy.py',
     'Lib/os.py','Lib/encodings/__init__.py','DLLs','extensions','bin/nvjpeg2k_0.dll','share/LichtFeld-Studio/assets/fonts',
     'share/LichtFeld-Studio/assets/rmlui','share/LichtFeld-Studio/locales','LICENSE',

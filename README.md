@@ -33,7 +33,7 @@ De build heeft maximaal350 minuten. Op publieke repositories zijn standaard GitH
 
 ## Wijzigingen ten opzichte van upstream
 
-`patches/portable-paths.patch` verwijdert één te brede Windows-DLL-exclusie en schakelt de twee absolute Python-ontwikkelpaden uit bij portable builds. Packaging voegt de door upstream build gebruikte maar niet geïnstalleerde `lfs_splat_lod_hierarchy.py` toe aan `bin/`. Er zijn geen wijzigingen aan training, rendering of export.
+`patches/portable-paths.patch` verwijdert één te brede Windows-DLL-exclusie en schakelt de twee absolute Python-ontwikkelpaden uit bij portable builds. Packaging voegt de door upstream build gebruikte maar niet geïnstalleerde `lfs_splat_lod_hierarchy.py` toe aan `bin/`. Er zijn geen wijzigingen aan training, rendering of export. vcpkg wordt volledig gekloond zodat historische portfiles tijdens configuratie zonder lazy Git-netwerkrequests beschikbaar zijn.
 
 De ZIP behoudt upstream layout: `bin/`, `Lib/`, `DLLs/`, `extensions/` en `share/LichtFeld-Studio/`. Licenties en een SHA256-manifest worden aangevuld. Het bronarchief bevat de exacte applicatie met submodule, patch en scripts, de vcpkg-recepten, gedownloade dependencybronnen en beschikbare gepatchte bronbomen. De bronarchives worden samen met de binary-cache bewaard zodat hergebruik van binaries hun bijbehorende oorspronkelijke bronnen behoudt.
 

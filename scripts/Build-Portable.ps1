@@ -83,12 +83,24 @@ function Assert-PinnedCheckout {
 }
 
 function Initialize-PinnedCheckout {
-    param([string]$Path, [string]$Repository, [string]$Commit)
+    param([string]$Path, [string]$Repository, [string]$Commit, [switch]$FullClone)
     if (-not (Test-Path -LiteralPath $Path)) {
-        Invoke-CheckedNative git @('clone', '--filter=blob:none', '--no-checkout', $Repository, $Path)
+        # vcpkg materializes historical port trees under a controlled Git
+        # environment. Lazy promisor fetches can fail there, so retain the full
+        # pinned repository history for dependency registry reads.
+        $cloneArguments = @('clone', '--no-checkout')
+        if (-not $FullClone) { $cloneArguments += '--filter=blob:none' }
+        $cloneArguments += @($Repository, $Path)
+        Invoke-CheckedNative git $cloneArguments
         Invoke-CheckedNative git @('-C', $Path, 'checkout', '--detach', $Commit)
     }
     Assert-PinnedCheckout $Path $Repository $Commit
+    if ($FullClone) {
+        $partialFilter = @(& git -C $Path config --get remote.origin.partialclonefilter)
+        if ($partialFilter.Count -gt 0) {
+            throw 'vcpkg vereist een volledige Git-clone; gebruik een nieuwe lege Workspace met dit bouwscript.'
+        }
+    }
 }
 
 function Assert-PortablePatch {
@@ -255,7 +267,7 @@ try {
             Invoke-CheckedNative git @('-C', $SourceDir, 'apply', $PatchPath)
         }
         Assert-PortablePatch
-        Initialize-PinnedCheckout $VcpkgDir $VcpkgRepository $VcpkgCommit
+        Initialize-PinnedCheckout $VcpkgDir $VcpkgRepository $VcpkgCommit -FullClone
         if (-not (Test-Path -LiteralPath (Join-Path $VcpkgDir 'vcpkg.exe'))) {
             Invoke-CheckedNative (Join-Path $VcpkgDir 'bootstrap-vcpkg.bat') @('-disableMetrics')
         }
