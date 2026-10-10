@@ -46,10 +46,10 @@ if (-not (Test-Path -LiteralPath ([IO.Path]::GetDirectoryName($jsonPath)) -PathT
     throw 'De map voor het JSON-rapport bestaat niet.'
 }
 
-$isWindows = ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT)
+$isWindowsPlatform = ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT)
 $nativeArchitecture = $env:PROCESSOR_ARCHITECTURE
 if ($env:PROCESSOR_ARCHITEW6432) { $nativeArchitecture = $env:PROCESSOR_ARCHITEW6432 }
-if ($isWindows -and [Environment]::Is64BitOperatingSystem -and $nativeArchitecture -eq 'AMD64') {
+if ($isWindowsPlatform -and [Environment]::Is64BitOperatingSystem -and $nativeArchitecture -eq 'AMD64') {
     Add-Check 'Windows x64' 'PASS' ("Windows kernel {0}; AMD64." -f [Environment]::OSVersion.Version)
 } else { Add-Check 'Windows x64' 'FAIL' 'Dit pakket vereist Windows op een AMD64/x64-computer.' }
 if ([Environment]::Is64BitProcess) { Add-Check 'PowerShell x64' 'PASS' '64-bit proces.' }
@@ -127,7 +127,7 @@ if (-not (Test-Path -LiteralPath $cudaPath -PathType Leaf)) {
         }
     } else { Add-Check 'Driverversie' 'FAIL' "NVIDIA-versie kon niet betrouwbaar uit $($versionInfo.FileVersion) worden bepaald." }
 
-    if ($isWindows -and [Environment]::Is64BitProcess) {
+    if ($isWindowsPlatform -and [Environment]::Is64BitProcess) {
         try {
             if (-not ('LichtFeldPortable.CudaDriverProbe' -as [type])) {
                 # Add-Type gebruikt standaard Windows PowerShell/.NET; geen SDK/VS nodig.

@@ -7,15 +7,21 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path -LiteralPath $PackageRoot).Path
 $required = @('bin/LichtFeld-Studio.exe','bin/python.exe','bin/python312.dll','bin/python312._pth',
-    'bin/uv.exe','bin/lfs_core.dll','bin/lfs_python_runtime.dll','bin/lfs_visualizer.dll',
+    'bin/uv.exe','bin/pythonw.exe','bin/venvlauncher.exe','bin/venvwlauncher.exe',
+    'bin/lfs_core.dll','bin/lfs_python_runtime.dll','bin/lfs_visualizer.dll',
     'bin/lfs_mcp.dll','bin/_lfs_panel_contract.py','bin/lfs_splat_lod_hierarchy.py',
-    'Lib/os.py','Lib/encodings/__init__.py','DLLs','share/LichtFeld-Studio/assets/fonts',
+    'Lib/os.py','Lib/encodings/__init__.py','DLLs','extensions','bin/nvjpeg2k_0.dll','share/LichtFeld-Studio/assets/fonts',
     'share/LichtFeld-Studio/assets/rmlui','share/LichtFeld-Studio/locales','LICENSE',
     'THIRD_PARTY_LICENSES.md','licenses','README-NL.md','SHA256SUMS.txt')
 foreach ($relative in $required) { if (-not (Test-Path (Join-Path $root $relative))) { throw "Pakketbestand ontbreekt: $relative" } }
 if (-not (Get-ChildItem (Join-Path $root 'bin') -Filter 'lichtfeld*.pyd')) { throw 'lichtfeld Python module ontbreekt' }
 if (-not (Get-ChildItem (Join-Path $root 'bin') -Filter 'cudart64*.dll')) { throw 'CUDA-runtime DLL ontbreekt' }
 if (-not (Get-ChildItem (Join-Path $root 'bin') -Filter 'curand64*.dll')) { throw 'cuRAND-runtime DLL ontbreekt' }
+if (-not (Get-ChildItem (Join-Path $root 'bin') -Filter 'nvjpeg64*.dll')) { throw 'nvJPEG-runtime DLL ontbreekt' }
+foreach ($pattern in @('*nvjpeg_ext*.dll','*nvjpeg2k_ext*.dll')) {
+    if (-not (Get-ChildItem (Join-Path $root 'extensions') -Filter $pattern)) { throw "Dynamische imagecodec-extension ontbreekt: $pattern" }
+}
+if (-not (Get-ChildItem (Join-Path $root 'share\LichtFeld-Studio') -Filter '*.spv' -Recurse)) { throw 'Gecompileerde Vulkan-shaders ontbreken' }
 if (Get-ChildItem $root -Filter 'nvcuda.dll' -Recurse) { throw 'Driver DLL nvcuda.dll mag niet worden gebundeld' }
 # Verify the exact bytes that will be distributed.
 foreach ($line in Get-Content (Join-Path $root 'SHA256SUMS.txt')) {

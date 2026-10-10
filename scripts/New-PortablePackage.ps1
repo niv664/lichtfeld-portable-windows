@@ -30,10 +30,10 @@ foreach ($port in Get-ChildItem $share -Directory) {
         Copy-Item $copyright $target
     }
 }
-$licenseRoots=@((Join-Path $source 'external'),(Join-Path $build '_deps'),(Join-Path $source 'resources\licenses'))
+$licenseRoots=@((Join-Path $source 'external'),(Join-Path $build '_deps'),(Join-Path $source 'resources\licenses'),(Join-Path $source 'src'))
 foreach ($licenseRoot in $licenseRoots) {
     if (-not (Test-Path $licenseRoot)) { continue }
-    foreach ($file in Get-ChildItem $licenseRoot -File -Recurse | Where-Object { $_.Name -match '^(LICENSE|COPYING|NOTICE|COPYRIGHT|OFL)(\..*)?$' -and $_.FullName -notmatch '[\\/](\.git|CMakeFiles)[\\/]' }) {
+    foreach ($file in Get-ChildItem $licenseRoot -File -Recurse | Where-Object { $_.Name -match '(?i)(^|[._-])(licen[sc]e|copying|notice|copyright|ofl|patents)($|[._-])' -and $_.FullName -notmatch '[\\/](\.git|CMakeFiles)[\\/]' }) {
         $relative=[IO.Path]::GetRelativePath($licenseRoot,$file.FullName)
         $target=Join-Path $licenses ((Split-Path $licenseRoot -Leaf)+'\'+$relative)
         New-Item -ItemType Directory -Path (Split-Path $target -Parent) -Force | Out-Null
@@ -62,6 +62,12 @@ $sourceName='LichtFeld-Studio-v0.5.4-corresponding-source.tar.gz'
 $packageName='LichtFeld-Studio-v0.5.4-portable-windows-x64'
 $manifest=[ordered]@{version='0.5.4';upstreamCommit=$actual;vcpkgCommit=$lock.vcpkgCommit;cuda='12.8.0';minimumDriverWindows=$lock.minimumDriverPolicyWindows;minimumComputeCapability='7.5';builtAtUtc=[DateTime]::UtcNow.ToString('o');sourceArchive=$sourceName;packagingCommit=(& git -C $repo rev-parse HEAD).Trim();gpuValidation='not run in GitHub Actions';binarySigning='unsigned'}
 $manifest | ConvertTo-Json | Set-Content (Join-Path $dist 'BUILD-MANIFEST.json') -Encoding utf8
+$inventory=Get-ChildItem $dist -Recurse -File | Where-Object {$_.Extension -in @('.exe','.dll','.pyd')} | Sort-Object FullName | ForEach-Object {
+    $version=[Diagnostics.FileVersionInfo]::GetVersionInfo($_.FullName)
+    [pscustomobject]@{path=[IO.Path]::GetRelativePath($dist,$_.FullName).Replace('\','/');fileVersion=$version.FileVersion;publisher=$version.CompanyName;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}
+}
+$inventory | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $dist 'DEPENDENCY-INVENTORY.json') -Encoding utf8
+Copy-Item (Join-Path $build 'vcpkg_installed\vcpkg\status') (Join-Path $dist 'VCPKG-INSTALLED-STATUS.txt')
 $sourceIndex=@(
     'Exact corresponding sources for the adjacent binary package.',
     'upstream/: GPLv3 app and recursive external/libvterm submodule, with the portable patch applied.',
@@ -77,12 +83,19 @@ $sourceIndex | Set-Content (Join-Path $sourceBundle 'README.txt') -Encoding utf8
 function Copy-SourceTree([string]$From,[string]$To) {
     New-Item -ItemType Directory -Path $To -Force | Out-Null
     # Robocopy uses native literal paths. Return codes 0..7 indicate success.
-    & robocopy $From $To /E /XD .git __pycache__ build build-debug b artifacts work logs buildtrees packages downloads /XF '*.obj' '*.o' '*.pdb' '*.pyc' /NFL /NDL /NJH /NJS /NP | Out-Null
+    # Rooted exclusions preserve legitimate nested source directories such as tools/build.
+    $excludedRoots=@('artifacts','work','logs','buildtrees','packages','downloads') | ForEach-Object {Join-Path $From $_}
+    & robocopy $From $To /E /XD .git __pycache__ @excludedRoots /XF .git '*.obj' '*.o' '*.pdb' '*.pyc' /NFL /NDL /NJH /NJS /NP | Out-Null
     if ($LASTEXITCODE -ge 8) { throw "Kopieren bronboom mislukt: $From ($LASTEXITCODE)" }
 }
 Copy-SourceTree $source (Join-Path $sourceBundle 'upstream')
 Copy-SourceTree $repo (Join-Path $sourceBundle 'packaging')
 Copy-SourceTree (Join-Path $Workspace 'vcpkg') (Join-Path $sourceBundle 'vcpkg')
+$usedPorts=Join-Path $Workspace 'vcpkg\buildtrees\versioning_\versions'
+if (-not (Test-Path $usedPorts)) { throw 'Exact gebruikte historische vcpkg-portrecipes ontbreken.' }
+Copy-SourceTree $usedPorts (Join-Path $sourceBundle 'used-versioned-port-recipes')
+& git -C (Join-Path $Workspace 'vcpkg') show ($lock.vcpkgBuiltinBaseline+':versions/baseline.json') | Set-Content (Join-Path $sourceBundle 'vcpkg-original-baseline.json') -Encoding utf8
+if ($LASTEXITCODE -ne 0) { throw 'De gebruikte vcpkg-baseline kon niet worden gearchiveerd.' }
 $archiveDir=Join-Path $sourceBundle 'source-archives'
 New-Item -ItemType Directory -Path $archiveDir -Force | Out-Null
 foreach ($file in Get-ChildItem (Join-Path $Workspace 'downloads\vcpkg') -File | Where-Object {$_.Name -match '\.(zip|tar|gz|bz2|xz|tgz|7z)$'}) { Copy-Item $file.FullName $archiveDir }

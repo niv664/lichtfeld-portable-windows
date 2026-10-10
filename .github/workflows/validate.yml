@@ -1,0 +1,33 @@
+name: Packaging validation
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Check scripts and pinned configuration
+        shell: pwsh
+        run: ./scripts/Test-PackagingSources.ps1
+      - name: Test validator on Windows PowerShell 5.1
+        shell: powershell
+        run: ./scripts/Test-ValidationScripts.ps1 -ReportPath "$env:RUNNER_TEMP\validation-powershell51.json"
+      - name: Test validator on PowerShell 7
+        shell: pwsh
+        run: ./scripts/Test-ValidationScripts.ps1 -ReportPath "$env:RUNNER_TEMP\validation-pwsh7.json"
+      - name: Save validation evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: validator-test-results
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/validation-powershell51.json
+            ${{ runner.temp }}/validation-pwsh7.json

@@ -34,7 +34,10 @@ jobs:
 
       - name: Validate packaging scripts
         shell: pwsh
-        run: ./scripts/Test-PackagingSources.ps1
+        run: |
+          ./scripts/Test-PackagingSources.ps1
+          ./scripts/Test-ValidationScripts.ps1 -ReportPath "$env:RUNNER_TEMP\validation-scripts.json"
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency validator regression tests failed.' }
 
       - name: Inspect hosted build tools
         shell: pwsh
